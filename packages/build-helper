@@ -26,64 +26,81 @@ OUTPUT=/output
 . /etc/os-release
 
 build_alpine() {
-    cp -r $ROOT_RO/packages/APKBUILD .
+    build_root=/tmp/source
+    cp -r /source-ro/packages/APKBUILD .
 
     abuild-keygen -nai
     abuild -r
 
-    cp ~/packages/*/x86_64/*.apk $OUTPUT
+    cp -r ~/packages/home/* ~/abuild /output
+    
 }
 
 
 
 build_archlinux() {
-    cp -r $ROOT_RO/packages/PKGBUILD .
+    mkdir build
+    cd build
+    
+    cp -r /source-ro/packages/PKGBUILD .
     makepkg --noconfirm -Cfsir PKGBUILD
 
-    cp ~/*.tar.zst $OUTPUT
+    cp * /output
 }
 
 
-# This part is a ugly hack.
-# TODO: Find a better way to build deb packages.
+
 build_deb() {
+    # unreleased versions have no codename
+    if test -z "${VERSION_CODENAME}"; then
+	VERSION_CODENAME=$release
+    fi
+
+    # Use s specific directory, this make easier to copy package files
+    # to file output directory later.
+    mkdir build
+    cd build
+    
     # Fetch sources
     wget \
 	https://github.com/AgentD/squashfs-tools-ng/archive/v$version/squashfs-tools-ng-$version.tar.gz \
-	-O squashfs-tools-ng_$version+$VERSION_CODENAME.orig.tar.gz
+	-O squashfs-tools-ng_$version.orig.tar.gz
 
-    tar xfz squashfs-tools-ng_$version+$VERSION_CODENAME.orig.tar.gz
+    # Prepare sources
+    tar xfz squashfs-tools-ng_$version.orig.tar.gz
     cd squashfs-tools-ng-$version
-    cp -r $ROOT_RO/packages/debian .
+    cp -r /source-ro/packages/debian .
 
-    #ln -s packages/debian
+    # Update debian version and add codename to it
     DEBFULLNAME="$USER" DEBEMAIL="$USER@localhost" \
-	       dch -v $version+$VERSION_CODENAME-1 \
+	       dch -v $version-1$VERSION_CODENAME \
 	       -D $VERSION_CODENAME "Build $version for $VERSION_CODENAME."
 
-    # See https://packages.debian.org/search?searchon=sourcenames&keywords=debhelper
-    # https://packages.ubuntu.com/search?keywords=debhelper&searchon=names&suite=all&section=all
-    case "$VERSION_CODENAME" in
-	jessie|xenial) dhv=9 ;;
-	stretch) dhv=10 ;;
-	bionic) dhv=11 ;;
-	buster|focal) dhv=12 ;;
-	bookworm|bullseye|groovy) dhv=13 ;;
-	sid) dhv=13 ;;
-    esac
-
+    # Figure out debhelper version
+    dhv=$(apt-cache policy debhelper | grep Candidate: |\
+	      awk '{print $2}' | cut -d. -f1 | head -n1)
     sed -i -e "s/@DEBHELPER_VERSION@/$dhv/" debian/control
     echo $dhv > debian/compat
 
-    sudo mk-build-deps --install \
-	 --tool='apt-get --no-install-recommends --yes' debian/control
-    sudo rm -f *-build-deps_*
+    # libzstd-dev not present in trusty
+    case "$VERSION_CODENAME" in
+	trusty)
+	    sed -i -e 's/libzstd-dev, //' debian/control
+	    ;;
+    esac
+
+    # Generate build depends package
+    mk-build-deps --install --remove \
+		  --tool='apt-get --no-install-recommends --yes' \
+		  --root-cmd sudo debian/control
     
+    # mk-build-deps do not remove .buildinfo nor .changes files
+    rm -f *-build-deps_*
+
     debuild
-    debuild -- clean
+    #debuild -- clean
     
-    cat /tmp/squashfs-tools-ng*
-    cp ../*.deb $OUTPUT
+    cp ../* /output
 }
 
 
@@ -99,20 +116,20 @@ build_rpm() {
 	    ;;
     esac
 
-    cp -r $ROOT_RO/packages/squashfs-tools-ng.spec .
+    cp -r /source-ro/packages/squashfs-tools-ng.spec .
     rpmdev-setuptree
     spectool -g -R squashfs-tools-ng.spec
     rpmspec --parse squashfs-tools-ng.spec \
 	| grep BuildRequires | cut -d' ' -f2  \
 	| xargs sudo yum install -y
     rpmbuild --clean -ba squashfs-tools-ng.spec
-    cp ~/rpmbuild/RPMS/x86_64/*.rpm $OUTPUT
+    cp -r ~/rpmbuild/* /output
 
 }
 
 
 build_opensuse() {
-    cp -r $ROOT_RO/packages/squashfs-tools-ng.spec .
+    cp -r /source-ro/packages/squashfs-tools-ng.spec .
 
     # Fetch source
     rpmspec --parse squashfs-tools-ng.spec | grep Source0 \
@@ -125,7 +142,7 @@ build_opensuse() {
 	| xargs sudo zypper install -y
     
     rpmbuild --clean -ba squashfs-tools-ng.spec
-    cp ~/rpmbuild/RPMS/x86_64/*.rpm $OUTPUT
+    cp -r ~/rpmbuild/* /output
 }
 
 
