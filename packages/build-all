@@ -2,13 +2,15 @@
 
 vendors='alpine archlinux centos debian fedora opensuse ubuntu'
 
-alpine_versions='3.11 3.12'
-archlinux_versions='latest'
-centos_versions='7 8'
-debian_versions='bookworm bullseye buster strech'
-fedora_versions='32'
-opensuse_versions='15.0 15.1 15.2'
-ubuntu_versions='bionic focal groovy'
+alpine_versions='3.12 3.11 3.10'
+archlinux_versions='latest 20200908'
+centos_versions='8 7'
+# jessie cannot be build out-of-the-box it requires pkg-config>0.26
+debian_versions='stretch buster bullseye'
+fedora_versions='32 31 30'
+opensuse_versions='15.2 15.1 15.0'
+# trusty cannot be build out-of-the-box it requires pkg-config>0.26
+ubuntu_versions='groovy focal bionic xenial'
 
 source_dir=$(git rev-parse --show-toplevel)
 
